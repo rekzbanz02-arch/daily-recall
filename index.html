@@ -123,6 +123,62 @@
   .icon-btn:active { transform: scale(0.94); }
   .icon-btn svg { width: 18px; height: 18px; }
 
+  .search-row {
+    max-width: 680px;
+    margin: 12px auto 0;
+  }
+  .search-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    width: 15px; height: 15px;
+    color: var(--ink-soft);
+    pointer-events: none;
+  }
+  #searchInput {
+    width: 100%;
+    font-family: var(--sans);
+    font-size: 14px;
+    padding: 10px 36px;
+    border-radius: 10px;
+    border: 1px solid var(--hairline);
+    background: var(--bg-raised);
+    color: var(--ink);
+  }
+  #searchInput:focus { outline: none; border-color: var(--accent); }
+  .search-clear {
+    position: absolute;
+    right: 6px;
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    border: none;
+    background: none;
+    color: var(--ink-soft);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .search-clear svg { width: 14px; height: 14px; }
+  .search-clear:hover { background: var(--bg); color: var(--ink); }
+
+  mark.search-hit {
+    background: var(--accent-soft);
+    color: var(--ink);
+    border-radius: 3px;
+    padding: 0 1px;
+  }
+
+  .no-results {
+    text-align: center;
+    padding: 70px 20px;
+    color: var(--ink-soft);
+  }
+  .no-results .glyph { font-size: 34px; margin-bottom: 14px; opacity: 0.7; }
+  .no-results p { font-family: var(--sans); font-size: 14.5px; max-width: 320px; margin: 0 auto; }
+
   main {
     max-width: 680px;
     margin: 0 auto;
@@ -188,7 +244,7 @@
   }
   .drag-handle:active { cursor: grabbing; }
   .drag-handle svg { width: 15px; height: 15px; }
-  #list.locked .drag-handle { display: none; }
+  #list.locked .drag-handle, #list.searching .drag-handle { display: none; }
 
   .marker {
     flex-shrink: 0;
@@ -263,7 +319,7 @@
   .action-menu .menu-delete { color: var(--danger); }
 
   .entry-body { padding-left: 68px; color: var(--ink); }
-  #list.locked .entry-body { padding-left: 37px; }
+  #list.locked .entry-body, #list.searching .entry-body { padding-left: 37px; }
   .entry-body p { margin: 0 0 10px; text-align: left; hyphens: none; }
   .entry-body p:last-child { margin-bottom: 0; }
   .entry-body ol, .entry-body ul { margin: 0; padding-left: 22px; }
@@ -461,6 +517,15 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"></path></svg>
     </button>
   </div>
+  <div class="search-row">
+    <div class="search-field">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-3.8-3.8"></path></svg>
+      <input type="text" id="searchInput" placeholder="Search all entries…" autocomplete="off" aria-label="Search all entries">
+      <button class="search-clear" id="searchClearBtn" aria-label="Clear search" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+      </button>
+    </div>
+  </div>
 </header>
 
 <main>
@@ -468,6 +533,10 @@
   <div class="empty-state" id="emptyState" style="display:none;">
     <div class="glyph">📖</div>
     <p>Nothing to memorize yet. Tap the + button to add your first paragraph, list, or set of terms.</p>
+  </div>
+  <div class="no-results" id="noResultsState" style="display:none;">
+    <div class="glyph">🔍</div>
+    <p>No entries match your search.</p>
   </div>
 </main>
 
@@ -586,10 +655,14 @@
   let currentType = 'paragraph';
   let syncTimer = null;
   let expandedIds = new Set();
+  let searchQuery = '';
 
   const $ = (id) => document.getElementById(id);
   const listEl = $('list');
   const emptyState = $('emptyState');
+  const noResultsState = $('noResultsState');
+  const searchInput = $('searchInput');
+  const searchClearBtn = $('searchClearBtn');
 
   function binId() { return localStorage.getItem(LS_BIN) || DEFAULT_BIN_ID; }
   function masterKey() { return localStorage.getItem(LS_KEY) || DEFAULT_MASTER_KEY; }
@@ -690,12 +763,23 @@
     return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  function renderBody(entry) {
+  // Wraps every case-insensitive match of `query` inside an already-escaped
+  // HTML string with <mark>. Must only ever be called on escaped text
+  // fragments *before* any structural tags (<br>, <p>, etc.) are added,
+  // so the match can never land inside a tag.
+  function highlight(escapedText, query) {
+    if (!query) return escapedText;
+    const escQuery = escapeHtml(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!escQuery) return escapedText;
+    return escapedText.replace(new RegExp(escQuery, 'gi'), m => `<mark class="search-hit">${m}</mark>`);
+  }
+
+  function renderBody(entry, query) {
     const raw = entry.content || '';
     if (entry.type === 'numbered' || entry.type === 'bulleted') {
       const items = raw.split('\n').map(l => l.trim()).filter(Boolean);
       const tag = entry.type === 'numbered' ? 'ol' : 'ul';
-      return `<${tag}>${items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</${tag}>`;
+      return `<${tag}>${items.map(i => `<li>${highlight(escapeHtml(i), query)}</li>`).join('')}</${tag}>`;
     }
     if (entry.type === 'terms') {
       const lines = raw.split('\n').map(l => l.trim()).filter(Boolean);
@@ -704,20 +788,32 @@
         if (idx === -1) return { term: line, meaning: '' };
         return { term: line.slice(0, idx).trim(), meaning: line.slice(idx + 1).trim() };
       });
-      return `<dl>${pairs.map(p => `<dt>${escapeHtml(p.term)}</dt><dd>${escapeHtml(p.meaning)}</dd>`).join('')}</dl>`;
+      return `<dl>${pairs.map(p => `<dt>${highlight(escapeHtml(p.term), query)}</dt><dd>${highlight(escapeHtml(p.meaning), query)}</dd>`).join('')}</dl>`;
     }
     // paragraph
     const paras = raw.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
     if (paras.length === 0) return '';
-    return paras.map(p => `<p>${escapeHtml(p).replace(/\n/g, '<br>')}</p>`).join('');
+    return paras.map(p => `<p>${highlight(escapeHtml(p), query).replace(/\n/g, '<br>')}</p>`).join('');
+  }
+
+  function matchesSearch(entry, query) {
+    const hay = ((entry.title || '') + '\n' + (entry.content || '')).toLowerCase();
+    return hay.includes(query.toLowerCase());
   }
 
   function render() {
     listEl.innerHTML = '';
-    emptyState.style.display = entries.length ? 'none' : 'block';
-    entries.forEach(entry => {
+    const query = searchQuery;
+    const visible = query ? entries.filter(e => matchesSearch(e, query)) : entries;
+
+    listEl.classList.toggle('searching', !!query);
+    emptyState.style.display = (!query && entries.length === 0) ? 'block' : 'none';
+    noResultsState.style.display = (query && visible.length === 0) ? 'block' : 'none';
+
+    visible.forEach(entry => {
       const div = document.createElement('div');
-      div.className = 'entry' + (expandedIds.has(entry.id) ? ' expanded' : '');
+      const isExpanded = query ? true : expandedIds.has(entry.id);
+      div.className = 'entry' + (isExpanded ? ' expanded' : '');
       div.dataset.entryId = entry.id;
       div.innerHTML = `
         <div class="entry-head" data-id="${entry.id}">
@@ -726,7 +822,7 @@
           </div>
           <div class="marker ${entry.type}">${TYPE_GLYPH[entry.type]}</div>
           <div class="entry-title-row">
-            <p class="entry-title">${escapeHtml(entry.title || 'Untitled')}</p>
+            <p class="entry-title">${highlight(escapeHtml(entry.title || 'Untitled'), query)}</p>
           </div>
           <div class="entry-actions">
             <button class="more-btn" aria-label="More options" data-id="${entry.id}">
@@ -740,7 +836,7 @@
           <div class="chevron"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"></path></svg></div>
         </div>
         <div class="entry-collapse"><div class="entry-collapse-inner">
-          <div class="entry-body">${renderBody(entry)}</div>
+          <div class="entry-body">${renderBody(entry, query)}</div>
         </div></div>
       `;
       listEl.appendChild(div);
@@ -757,6 +853,7 @@
     if (e.target.closest('.drag-handle')) return;
     const head = e.target.closest('.entry-head');
     if (head) {
+      if (searchQuery) return; // entries stay expanded while search results are shown
       const id = head.dataset.id;
       if (expandedIds.has(id)) expandedIds.delete(id); else expandedIds.add(id);
       head.closest('.entry').classList.toggle('expanded');
@@ -798,7 +895,7 @@
   });
 
   listEl.addEventListener('pointerdown', (e) => {
-    if (reorderLocked()) return;
+    if (reorderLocked() || searchQuery) return;
     const handle = e.target.closest('.drag-handle');
     if (!handle) return;
     const entryEl = handle.closest('.entry');
@@ -939,6 +1036,20 @@
     fetchRemote();
   });
   $('syncNowBtn').addEventListener('click', fetchRemote);
+
+  // ---------- Search ----------
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value.trim();
+    searchClearBtn.style.display = searchQuery ? 'flex' : 'none';
+    render();
+  });
+  searchClearBtn.addEventListener('click', () => {
+    searchInput.value = '';
+    searchQuery = '';
+    searchClearBtn.style.display = 'none';
+    render();
+    searchInput.focus();
+  });
 
   // ---------- Init ----------
   loadLocal();
